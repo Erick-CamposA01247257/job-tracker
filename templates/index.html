@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; }
+        .header { background: white; padding: 16px 24px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 16px; font-weight: 600; }
+        .header-btns { display: flex; gap: 8px; }
+        .btn { border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
+        .btn-primary { background: #185FA5; color: white; }
+        .btn-primary:hover { background: #0C447C; }
+        .btn-secondary { background: #f5f5f5; color: #555; border: 1px solid #ddd; }
+        .btn-secondary:hover { background: #eee; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .container { max-width: 1000px; margin: 24px auto; padding: 0 24px; }
+        .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+        .stat { background: white; border-radius: 10px; padding: 14px 16px; border: 1px solid #eee; }
+        .stat-value { font-size: 22px; font-weight: 600; color: #185FA5; }
+        .stat-label { font-size: 11px; color: #888; margin-top: 2px; }
+        .filters { display: flex; gap: 8px; margin-bottom: 16px; }
+        .filter-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd; background: white; font-size: 12px; cursor: pointer; font-family: inherit; color: #555; }
+        .filter-btn.active { background: #185FA5; color: white; border-color: #185FA5; }
+        .vacantes { display: flex; flex-direction: column; gap: 12px; }
+        .vacante { background: white; border-radius: 12px; padding: 16px 20px; border: 1px solid #eee; }
+        .vacante.vista { opacity: 0.6; }
+        .vacante-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .vacante-titulo { font-size: 14px; font-weight: 600; color: #185FA5; cursor: pointer; }
+        .vacante-titulo:hover { text-decoration: underline; }
+        .vacante-meta { font-size: 12px; color: #888; margin-bottom: 6px; }
+        .vacante-razon { font-size: 12px; color: #555; line-height: 1.5; }
+        .vacante-btns { display: flex; gap: 6px; align-items: center; }
+        .score-badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+        .score-high { background: #E1F5EE; color: #085041; }
+        .score-mid { background: #FFF3CD; color: #856404; }
+        .score-low { background: #FEE2E2; color: #991B1B; }
+        .btn-small { padding: 4px 10px; font-size: 11px; border-radius: 6px; border: 1px solid #ddd; background: white; cursor: pointer; font-family: inherit; }
+        .btn-small:hover { background: #f5f5f5; }
+        .btn-guardada { background: #EEEDFE; color: #3C3489; border-color: #AFA9EC; }
+        .empty { text-align: center; color: #888; font-size: 14px; padding: 40px; }
+        .ultima { font-size: 11px; color: #888; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>🎯 Job Tracker</h1>
+        <div class="ultima" id="ultima-busqueda">Cargando...</div>
+    </div>
+    <div class="header-btns">
+        <button class="btn btn-secondary" onclick="buscarAhora()" id="btn-buscar">🔍 Buscar ahora</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="stats" id="stats"></div>
+
+    <div class="filters">
+        <button class="filter-btn active" onclick="filtrar('todas', this)">Todas</button>
+        <button class="filter-btn" onclick="filtrar('nuevas', this)">Sin ver</button>
+        <button class="filter-btn" onclick="filtrar('top', this)">⭐ Score alto</button>
+        <button class="filter-btn" onclick="filtrar('guardadas', this)">🔖 Guardadas</button>
+    </div>
+
+    <div class="vacantes" id="vacantes">
+        <div class="empty">Cargando vacantes...</div>
+    </div>
+</div>
+
+<script>
+    let filtroActual = "todas"
+
+    function scoreBadge(score) {
+        if (score >= 7) return `<span class="score-badge score-high">⭐ ${score}/10</span>`
+        if (score >= 5) return `<span class="score-badge score-mid">⚡ ${score}/10</span>`
+        return `<span class="score-badge score-low">${score}/10</span>`
+    }
+
+    async function cargarStats() {
+        const data = await fetch("/stats").then(r => r.json())
+        document.getElementById("stats").innerHTML = `
+            <div class="stat"><div class="stat-value">${data.total}</div><div class="stat-label">Total vacantes</div></div>
+            <div class="stat"><div class="stat-value">${data.nuevas}</div><div class="stat-label">Sin ver</div></div>
+            <div class="stat"><div class="stat-value">${data.top}</div><div class="stat-label">Score alto</div></div>
+            <div class="stat"><div class="stat-value">${data.guardadas}</div><div class="stat-label">Guardadas</div></div>
+            <div class="stat"><div class="stat-value">${data.total - data.nuevas}</div><div class="stat-label">Revisadas</div></div>
+        `
+        document.getElementById("ultima-busqueda").textContent = `Última búsqueda: ${data.ultima_busqueda}`
+    }
+
+    async function cargarVacantes(filtro = "todas") {
+        const data = await fetch(`/vacantes?filtro=${filtro}`).then(r => r.json())
+        const container = document.getElementById("vacantes")
+
+        if (data.length === 0) {
+            container.innerHTML = '<div class="empty">No hay vacantes en esta categoría</div>'
+            return
+        }
+
+        container.innerHTML = data.map(v => `
+            <div class="vacante ${v.vista ? 'vista' : ''}" id="vacante-${v.id}">
+                <div class="vacante-header">
+                    <div>
+                        <div class="vacante-titulo" onclick="abrirVacante(${v.id}, '${v.link}')">${v.titulo}</div>
+                        <div class="vacante-meta">${v.empresa} &nbsp;|&nbsp; ${v.ubicacion} &nbsp;|&nbsp; ${v.fuente} &nbsp;|&nbsp; ${v.fecha_encontrada}</div>
+                    </div>
+                    <div class="vacante-btns">
+                        ${scoreBadge(v.score)}
+                        <button class="btn-small ${v.guardada ? 'btn-guardada' : ''}" onclick="guardar(${v.id}, this)">
+                            ${v.guardada ? '🔖 Guardada' : 'Guardar'}
+                        </button>
+                    </div>
+                </div>
+                ${v.razon ? `<div class="vacante-razon">💡 ${v.razon}</div>` : ''}
+            </div>
+        `).join('')
+    }
+
+    async function abrirVacante(id, link) {
+        await fetch("/vacante/vista", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        })
+        document.getElementById(`vacante-${id}`)?.classList.add("vista")
+        cargarStats()
+        window.open(link, "_blank")
+    }
+
+    async function guardar(id, btn) {
+        await fetch("/vacante/guardar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        })
+        const guardada = btn.classList.contains("btn-guardada")
+        btn.classList.toggle("btn-guardada")
+        btn.textContent = guardada ? "Guardar" : "🔖 Guardada"
+        cargarStats()
+    }
+
+    async function filtrar(filtro, btn) {
+        filtroActual = filtro
+        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"))
+        btn.classList.add("active")
+        await cargarVacantes(filtro)
+    }
+
+    async function buscarAhora() {
+        const btn = document.getElementById("btn-buscar")
+        btn.disabled = true
+        btn.textContent = "Buscando..."
+
+        const data = await fetch("/buscar", { method: "POST" }).then(r => r.json())
+
+        btn.disabled = false
+        btn.textContent = "🔍 Buscar ahora"
+
+        await cargarStats()
+        await cargarVacantes(filtroActual)
+
+        alert(`Búsqueda completada — ${data.nuevas} vacantes nuevas encontradas`)
+    }
+
+    cargarStats()
+    cargarVacantes()
+</script>
+</body>
+</html>
